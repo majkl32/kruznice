@@ -1,191 +1,93 @@
-<!doctype html>
-<html lang="cs">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Kružnice - webapp</title>
-</head>
-<body>
-  <div id="root"></div>
+import streamlit as st
+import matplotlib.pyplot as plt
+import numpy as np
+from io import BytesIO
+from fpdf import FPDF
 
-  <!-- React + ReactDOM from CDN -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <!-- html2canvas + jspdf for PDF export -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+st.set_page_config(page_title="Kružnice – Body na kružnici", page_icon="⚪", layout="wide")
 
-  <style>
-    body { font-family: Inter, Roboto, Arial; padding: 16px; background:#f7f7fb }
-    .app { max-width:1100px; margin:0 auto; display:grid; grid-template-columns: 380px 1fr; gap:16px }
-    .card{ background: white; border-radius:8px; padding:12px; box-shadow: 0 4px 14px rgba(20,20,40,0.06)}
-    label{display:block; margin-top:8px; font-size:13px}
-    input, select{ width:100%; padding:8px; margin-top:6px; box-sizing:border-box }
-    canvas{ background:linear-gradient(180deg,#fff,#fafaff); border:1px solid #e6e6f0; display:block; width:100%; height:600px }
-    .row{ display:flex; gap:8px }
-    .muted{ color:#666; font-size:12px }
-    .footer{ margin-top:12px; display:flex; gap:8px }
-  </style>
+st.title("⚪ Body na kružnici – webová aplikace")
 
-  <script type="text/javascript">
-  const e = React.createElement;
-  const { useState, useRef, useEffect } = React;
+# --- Vstupní parametry ---
+st.sidebar.header("Parametry kružnice")
+cx = st.sidebar.number_input("Střed X", value=0.0)
+cy = st.sidebar.number_input("Střed Y", value=0.0)
+r = st.sidebar.number_input("Poloměr", value=5.0, min_value=0.0)
+n = st.sidebar.number_input("Počet bodů na kružnici", value=12, min_value=1, step=1)
+barva = st.sidebar.color_picker("Barva bodů", "#ff3b30")
+jednotka = st.sidebar.text_input("Jednotka (např. m)", "m")
 
-  function App(){
-    const [cx, setCx] = useState(0);
-    const [cy, setCy] = useState(0);
-    const [r, setR] = useState(5);
-    const [n, setN] = useState(12);
-    const [unit, setUnit] = useState('m');
-    const [dotColor, setDotColor] = useState('#ff3b30');
-    const [authorName, setAuthorName] = useState('Tvé jméno');
-    const [contact, setContact] = useState('email@example.com');
+st.sidebar.header("Autor a kontakt")
+autor = st.sidebar.text_input("Tvé jméno", "Jan Novák")
+kontakt = st.sidebar.text_input("Kontakt (e-mail, web...)", "jan.novak@example.com")
 
-    const canvasRef = useRef(null);
-    const containerRef = useRef(null);
+# --- Výpočet bodů ---
+uhly = np.linspace(0, 2 * np.pi, n, endpoint=False)
+x = cx + r * np.cos(uhly)
+y = cy + r * np.sin(uhly)
 
-    // scale: map model units to pixels
-    const width = 820; const height = 600; const margin = 50;
+# --- Vykreslení ---
+fig, ax = plt.subplots(figsize=(6, 6))
+ax.set_aspect("equal", adjustable="box")
+ax.grid(True, which="both", linestyle="--", linewidth=0.5)
+ax.axhline(0, color="black", linewidth=1)
+ax.axvline(0, color="black", linewidth=1)
+ax.set_xlabel(f"X [{jednotka}]")
+ax.set_ylabel(f"Y [{jednotka}]")
 
-    function draw(){
-      const canvas = canvasRef.current;
-      if(!canvas) return;
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      // clear
-      ctx.clearRect(0,0,width,height);
+# Kružnice a body
+ax.plot(cx, cy, "ko", label="Střed")
+ax.plot(x, y, "o", color=barva, label="Body na kružnici")
+circle = plt.Circle((cx, cy), r, fill=False, color="blue", linewidth=1.5)
+ax.add_artist(circle)
 
-      // axes center in middle
-      const midX = width/2; const midY = height/2;
+# Popisky bodů
+for i, (xi, yi) in enumerate(zip(x, y), 1):
+    ax.text(xi, yi, f"{i}", fontsize=9, ha="left", va="bottom")
 
-      // scale: choose pxPerUnit so circle fits
-      const pxPerUnit = Math.min((width - margin*2)/( (Math.abs(cx)+Math.abs(r))*2 + 2), (height - margin*2)/((Math.abs(cy)+Math.abs(r))*2 + 2)) || 40;
+ax.legend()
+st.pyplot(fig)
 
-      // draw grid lines and axes with numeric ticks
-      ctx.save();
-      ctx.strokeStyle = '#e6e6f0'; ctx.lineWidth = 1;
-      // vertical grid
-      const unitsX = Math.floor((width - margin*2)/pxPerUnit/2)*2;
-      for(let i=-20;i<=20;i++){
-        const x = midX + i*pxPerUnit;
-        if(x < margin || x > width-margin) continue;
-        ctx.beginPath(); ctx.moveTo(x, margin); ctx.lineTo(x, height-margin); ctx.stroke();
-      }
-      // horizontal grid
-      for(let j=-20;j<=20;j++){
-        const y = midY + j*pxPerUnit;
-        if(y < margin || y > height-margin) continue;
-        ctx.beginPath(); ctx.moveTo(margin, y); ctx.lineTo(width-margin, y); ctx.stroke();
-      }
-      // axes
-      ctx.strokeStyle = '#333'; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.moveTo(margin, midY); ctx.lineTo(width-margin, midY); ctx.stroke(); // x
-      ctx.beginPath(); ctx.moveTo(midX, margin); ctx.lineTo(midX, height-margin); ctx.stroke(); // y
+# --- Export do PDF ---
+def create_pdf():
+    buffer = BytesIO()
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, "Kružnice – parametry úlohy", ln=True)
+    pdf.set_font("Arial", size=11)
+    pdf.cell(0, 8, f"Střed: ({cx}, {cy}) {jednotka}", ln=True)
+    pdf.cell(0, 8, f"Poloměr: {r} {jednotka}", ln=True)
+    pdf.cell(0, 8, f"Počet bodů: {n}", ln=True)
+    pdf.cell(0, 8, f"Barva bodů: {barva}", ln=True)
+    pdf.cell(0, 8, f"Autor: {autor}", ln=True)
+    pdf.cell(0, 8, f"Kontakt: {kontakt}", ln=True)
 
-      // ticks and numbers
-      ctx.fillStyle = '#222'; ctx.font = '12px Arial'; ctx.textAlign='center'; ctx.textBaseline='top';
-      for(let i=-10;i<=10;i++){
-        const x = midX + i*pxPerUnit;
-        if(x < margin || x > width-margin) continue;
-        ctx.beginPath(); ctx.moveTo(x, midY-6); ctx.lineTo(x, midY+6); ctx.stroke();
-        ctx.fillText((i).toString() + ' ' + unit, x, midY+8);
-      }
-      ctx.textAlign='right'; ctx.textBaseline='middle';
-      for(let j=-8;j<=8;j++){
-        const y = midY + j*pxPerUnit;
-        if(y < margin || y > height-margin) continue;
-        ctx.beginPath(); ctx.moveTo(midX-6, y); ctx.lineTo(midX+6, y); ctx.stroke();
-        ctx.fillText(( -j).toString() + ' ' + unit, midX-8, y);
-      }
+    # Ulož graf do obrázku a vlož ho do PDF
+    img_buf = BytesIO()
+    fig.savefig(img_buf, format="png", bbox_inches="tight")
+    img_buf.seek(0)
+    pdf.image(img_buf, x=10, y=80, w=180)
+    pdf.output(buffer)
+    return buffer.getvalue()
 
-      // draw circle
-      const circleX = midX + cx*pxPerUnit;
-      const circleY = midY - cy*pxPerUnit;
-      ctx.beginPath(); ctx.strokeStyle = '#0055aa'; ctx.lineWidth = 2; ctx.arc(circleX, circleY, r*pxPerUnit, 0, Math.PI*2); ctx.stroke();
+st.download_button(
+    label="📄 Stáhnout PDF",
+    data=create_pdf(),
+    file_name="kruznice.pdf",
+    mime="application/pdf",
+)
 
-      // compute points
-      const pts = [];
-      for(let i=0;i<n;i++){
-        const angle = 2*Math.PI * i / n;
-        const x = cx + r * Math.cos(angle);
-        const y = cy + r * Math.sin(angle);
-        pts.push({x,y,angle});
-      }
+# --- Info ---
+st.markdown("---")
+with st.expander("ℹ️ Informace o aplikaci"):
+    st.write("""
+    **Autor aplikace:** *zadej své jméno v levém panelu*  
+    **Asistent:** GPT-5  
+    **Použité technologie:** Streamlit, Matplotlib, NumPy, FPDF  
+    **Funkce:**  
+    - zadání středu, poloměru, počtu bodů, barvy a jednotky  
+    - vykreslení kružnice s body  
+    - export výsledku a parametrů do PDF  
+    """)
 
-      // draw points and labels
-      for(let i=0;i<pts.length;i++){
-        const p = pts[i];
-        const px = midX + p.x*pxPerUnit;
-        const py = midY - p.y*pxPerUnit;
-        ctx.beginPath(); ctx.fillStyle = dotColor; ctx.arc(px, py, 6, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#111'; ctx.font='13px Arial'; ctx.textAlign='left'; ctx.textBaseline='top';
-        ctx.fillText((i+1)+" ("+p.x.toFixed(2)+", "+p.y.toFixed(2)+")", px+8, py+4);
-      }
-
-      ctx.restore();
-    }
-
-    useEffect(()=>{ draw(); }, [cx,cy,r,n,dotColor,unit]);
-
-    async function exportPDF(){
-      const container = containerRef.current;
-      if(!container) return;
-      const canvasEl = canvasRef.current;
-      // render the drawing area to image
-      const canvasImage = canvasEl.toDataURL('image/png');
-      const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF({ unit:'mm', format:'a4' });
-      pdf.setFontSize(12);
-      pdf.text('Kružnice - parametry úlohy', 14, 14);
-      pdf.setFontSize(10);
-      pdf.text(`Střed: (${cx}, ${cy}) ${unit}`, 14, 22);
-      pdf.text(`Poloměr: ${r} ${unit}`, 14, 28);
-      pdf.text(`Počet bodů: ${n}`, 14, 34);
-      pdf.text(`Barva bodů: ${dotColor}`, 14, 40);
-      pdf.text(`Autor: ${authorName}`, 14, 46);
-      pdf.text(`Kontakt: ${contact}`, 14, 52);
-      // add image
-      const imgProps = pdf.getImageProperties(canvasImage);
-      const pdfW = 180; const pdfH = (imgProps.height * pdfW) / imgProps.width;
-      pdf.addImage(canvasImage, 'PNG', 14, 60, pdfW, pdfH);
-      pdf.save('kruzice.pdf');
-    }
-
-    return e('div', {className:'app'},
-      e('div', {className:'card'},
-        e('h3', null, 'Parametry kružnice'),
-        e('label', null, 'Střed X (units):'), e('input',{type:'number', value:cx, onChange: (ev)=>setCx(parseFloat(ev.target.value)||0)}),
-        e('label', null, 'Střed Y (units):'), e('input',{type:'number', value:cy, onChange: (ev)=>setCy(parseFloat(ev.target.value)||0)}),
-        e('label', null, 'Poloměr (units):'), e('input',{type:'number', value:r, min:0, onChange: (ev)=>setR(parseFloat(ev.target.value)||0)}),
-        e('label', null, 'Počet bodů:'), e('input',{type:'number', value:n, min:1, step:1, onChange: (ev)=>setN(parseInt(ev.target.value)||1)}),
-        e('label', null, 'Jednotka:'), e('input',{type:'text', value:unit, onChange: (ev)=>setUnit(ev.target.value)}),
-        e('label', null, 'Barva bodů:'), e('input',{type:'color', value:dotColor, onChange:(ev)=>setDotColor(ev.target.value)}),
-        e('hr'),
-        e('label', null, 'Autor (pro PDF):'), e('input',{type:'text', value:authorName, onChange:(ev)=>setAuthorName(ev.target.value)}),
-        e('label', null, 'Kontakt (pro PDF):'), e('input',{type:'text', value:contact, onChange:(ev)=>setContact(ev.target.value)}),
-        e('div',{className:'footer'},
-          e('button',{onClick:draw}, 'Vykreslit'),
-          e('button',{onClick:exportPDF}, 'Exportovat do PDF')
-        ),
-        e('p',{className:'muted'}, 'Poznámka: osa X a Y jsou očíslovány s jednotkou.'),
-      ),
-      e('div', {className:'card', ref:containerRef},
-        e('h3', null, 'Náhled'),
-        e('canvas', {ref:canvasRef}),
-        e('details', null, e('summary', null, 'Informace o aplikaci a použitých technologiích'),
-          e('div', {style:{padding:'8px'}},
-            e('p', null, 'Autor: vlož si své jméno v poli Autor.'),
-            e('p', null, 'Asistent: GPT-5 Thinking mini.'),
-            e('p', null, 'Technologie: React (CDN), Canvas API, jsPDF, html2canvas.'),
-            e('p', null, 'Funkce: zadání středu, poloměru, počtu bodů, barvy; vykreslení; export do PDF s parametry a obrázkem.'),
-          )
-        )
-      )
-    );
-  }
-
-  ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
-  </script>
-</body>
-</html>
